@@ -34,3 +34,42 @@ On Windows, NeuralNote is not code signed for now. To create the installer, the 
       directories.
 
 The installer will be located in `Installers/Windows/Output`.
+
+For the ARA development build, use the ARA-enabled Release directory and label the installer:
+
+```powershell
+& ISCC.exe /DReleaseDir=build-msvc2/NeuralNote_artefacts/Release /DInstallerName=NeuralNote_ARA_Installer_Windows_x64 /DInstallerInfoFile=ara-readme.txt Installers/Windows/neuralnote.iss
+```
+
+Use your installed or portable Inno Setup compiler (`ISCC.exe`).
+The installer offers the standalone application and VST3 independently; models download separately.
+This development build is unsigned and has ASIO disabled. The r4 and later installers include Vulkan GPU
+inference with CPU fallback; r1-r3 were CPU-only builds.
+
+For an isolated packaging smoke test, compile a separate installer with
+`/DValidationRoot=<absolute workspace directory>` and a different `InstallerName`.
+This redirects both components to that directory and disables shortcuts, legacy-folder cleanup,
+uninstall registration, and elevation. Never distribute the validation installer.
+
+For a Windows ARA installer with GPU support, obtain the [official Vulkan SDK](https://vulkan.lunarg.com/sdk/home/),
+set `VULKAN_SDK` to the SDK root (headers, import library, glslc and SPIRV-Headers CMake config),
+and configure from a Visual Studio developer environment:
+
+```powershell
+cmake -S . -B build-msvc2 -DMUSCRIPTOR_VULKAN=ON -DNEURALNOTE_ARA=ON -DBUILD_UNIT_TESTS=ON
+cmake --build build-msvc2 --target NeuralNote_VST3 NeuralNote_Standalone ARAIntegrationTests UnitTests
+ctest --test-dir build-msvc2 --output-on-failure
+$env:NEURALNOTE_INFERENCE_SMOKE = '1'
+$env:NEURALNOTE_INFERENCE_DEVICE = 'NVIDIA GeForce RTX 4090'
+$env:NEURALNOTE_INFERENCE_MODEL = 'small'
+./build-msvc2/Tests/ARAIntegrationTests.exe
+```
+
+Use an actual enumerated device name for the explicit-device smoke test, then repeat with `large`
+if that model is installed. Check `transcription-diagnostics.log` for the selected **Vulkan** device
+and successful inference before packaging. The GPU test is optional in normal CTest because it
+requires both hardware and a downloaded model. The Windows driver supplies the Vulkan runtime;
+the installer embeds the compute shaders and does not require the SDK on the target machine.
+
+The GPU verification build used official Vulkan SDK 1.4.363.0. Set `VULKAN_SDK` to your SDK
+root when rebuilding locally.

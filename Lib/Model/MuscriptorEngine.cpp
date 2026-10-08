@@ -5,6 +5,9 @@
 #include "MuscriptorEngine.h"
 
 #include <span>
+#include <algorithm>
+#include <thread>
+#include <exception>
 
 #include <JuceHeader.h>
 
@@ -17,6 +20,24 @@ static_assert(juce::exactlyEqual(TRANSCRIPTION_SAMPLE_RATE, static_cast<double>(
 
 namespace
 {
+// Shared by plugin instances in this process: concurrent models compete for CPU and RAM.
+std::mutex inferenceMutex;
+
+int inferenceThreads()
+{
+    const unsigned logical = std::max(1u, std::thread::hardware_concurrency());
+    return static_cast<int>(std::max(1u, logical / 2));
+}
+
+void diagnostic(const juce::String& message)
+{
+    const auto directory = NNFileUtils::getNeuralNoteDirectory();
+    if (NNFileUtils::ensureDirectoryExists(directory)) {
+        const auto file = directory.getChildFile("transcription-diagnostics.log");
+        file.appendText(juce::Time::getCurrentTime().toISO8601(true) + " " + message + "\n");
+    }
+}
+
 NoteEvent toNoteEvent(const msl::Note& inNote)
 {
     NoteEvent event;
@@ -95,6 +116,8 @@ MuscriptorEngine::Outcome MuscriptorEngine::_loadModel(ModelSize inModelSize, co
     }
 
     mTranscriber = std::move(*loaded);
+    diagnostic("Model loaded: " + String(mTranscriber->device().name) + " ("
+        + String(mTranscriber->device().backend) + ")");
 
     Logger::writeToLog("MuscriptorEngine: model loaded on " + String(mTranscriber->device().name) + " ("
                        + String(mTranscriber->device().backend) + ")");
@@ -107,7 +130,18 @@ MuscriptorEngine::Outcome MuscriptorEngine::transcribeToMIDI(ModelSize inModelSi
                                                              const float* inAudio,
                                                              int inNumSamples,
                                                              const std::vector<msl::InstrumentGroup>& inInstruments)
+try
 {
+    const std::unique_lock<std::mutex> inferenceLock(inferenceMutex, std::try_to_lock);
+    if (!inferenceLock.owns_lock()) {
+        mLastErrorMessage = "Another NeuralNote instance is transcribing. Wait for it to finish";
+        return Outcome::Failed;
+    }
+
+    diagnostic("Begin model=" + String(modelSizeToString(inModelSize))
+        + " threads=" + String(inferenceThreads()) + " samples=" + String(inNumSamples));
+    const ScopeGuard endDiagnostic {[] { diagnostic("Job exited"); }};
+
     // mCancelRequested and mProgress are deliberately not touched here. cancel() can be called as
     // soon as the plugin enters the Processing state, which happens before the thread pool gets
     // this far, so clearing the request here would silently drop it. reset() arms both, on the
@@ -125,6 +159,7 @@ MuscriptorEngine::Outcome MuscriptorEngine::transcribeToMIDI(ModelSize inModelSi
     const ScopeGuard unload_model {[this] { mTranscriber.reset(); }};
 
     mProgress = Progress {Phase::Transcribing, 0.f};
+    diagnostic("Inference starting");
 
     const std::span<const float> samples(inAudio, static_cast<size_t>(inNumSamples));
 
@@ -143,10 +178,12 @@ MuscriptorEngine::Outcome MuscriptorEngine::transcribeToMIDI(ModelSize inModelSi
         }
 
         mProgress = Progress {Phase::Transcribing, inUpdate.progress};
+        diagnostic("Chunk complete: " + String(inUpdate.finalized_through, 3) + " s");
         return true;
     };
 
     msl::TranscribeOptions options;
+    options.n_threads = inferenceThreads();
     options.instruments = inInstruments;
     options.should_cancel = [this] { return mCancelRequested.load(); };
 
@@ -170,7 +207,15 @@ MuscriptorEngine::Outcome MuscriptorEngine::transcribeToMIDI(ModelSize inModelSi
 
     mProgress = Progress {Phase::Transcribing, 1.f};
 
+    diagnostic("Transcription succeeded");
     return Outcome::Success;
+}
+catch (const std::exception& error)
+{
+    mTranscriber.reset();
+    mLastErrorMessage = error.what();
+    diagnostic("Exception: " + String(mLastErrorMessage));
+    return Outcome::Failed;
 }
 
 bool MuscriptorEngine::drainNewNotes(std::vector<NoteEvent>& ioNotes, double& ioFinalizedThrough)

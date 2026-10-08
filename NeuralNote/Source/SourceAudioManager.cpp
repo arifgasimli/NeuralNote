@@ -331,6 +331,39 @@ bool SourceAudioManager::onFileDrop(const File& inFile)
     return true;
 }
 
+juce::Result SourceAudioManager::onHostAudio(const AudioBuffer<float>& audio, double sampleRate, const String& name)
+{
+    const auto cache = NNFileUtils::getNeuralNoteDirectory().getChildFile("ara-audio");
+    if (!NNFileUtils::ensureDirectoryExists(cache))
+        return juce::Result::fail("Could not create NeuralNote's host-audio cache.");
+
+    const auto pending = cache.getChildFile(juce::Uuid().toString() + ".wav");
+    {
+        std::unique_ptr<OutputStream> stream = pending.createOutputStream();
+        WavAudioFormat format;
+        auto writer = format.createWriterFor(stream, AudioFormatWriterOptions()
+            .withSampleRate(sampleRate).withNumChannels(audio.getNumChannels()).withBitsPerSample(32)
+            .withSampleFormat(AudioFormatWriterOptions::SampleFormat::floatingPoint));
+        if (!writer || !writer->writeFromAudioSampleBuffer(audio, 0, audio.getNumSamples())) {
+            writer.reset();
+            pending.deleteFile();
+            return juce::Result::fail("Could not save the host clip's audio snapshot.");
+        }
+    }
+    // Content-addressed, immutable files can be shared by sessions without being deleted on clear.
+    const auto snapshot = cache.getChildFile(SHA256(pending).toHexString() + ".wav");
+    if (snapshot.existsAsFile()) {
+        pending.deleteFile();
+    } else if (!pending.moveFileTo(snapshot)) {
+        pending.deleteFile();
+        return juce::Result::fail("Could not finish saving the host clip's audio snapshot.");
+    }
+    if (!onFileDrop(snapshot))
+        return juce::Result::fail("Could not load the host clip's audio snapshot.");
+    mDroppedFilename = name;
+    return juce::Result::ok();
+}
+
 void SourceAudioManager::clear()
 {
     if (mIsRecording) {

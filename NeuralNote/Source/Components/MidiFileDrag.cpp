@@ -49,6 +49,7 @@ void MidiFileDrag::mouseDown(const juce::MouseEvent& inEvent)
 
     const auto out_file = mTempDirectory.getChildFile(
         NNFileUtils::getMidiExportFileName(mProcessor->getSourceAudioManager()->getDroppedFilename()));
+    mProcessor->syncHostTempo();
     const double export_bpm = mProcessor->getValueTree().getProperty(NnId::ExportTempoId, 120.0);
     const auto overflow_mode = static_cast<MidiOverflowMode>(static_cast<int>(mProcessor->getValueTree().getProperty(
         NnId::MidiOverflowModeId, static_cast<int>(MidiOverflowMode::ReuseChannels))));

@@ -4,15 +4,11 @@
 #include "NnEditorConstrainer.h"
 #include "PluginProcessor.h"
 
-/**
- * The window, and the only place that knows the UI can be any size other than the authored one.
- *
- * The main view keeps its authored bounds at every scale and is mapped onto the window by an
- * affine transform, so nothing below re-lays out and no component knows what scale it is drawn
- * at. The factor lives in NnGlobalSettings; what a window applies is that factor clamped to the
- * display it opened on, and the clamped one is what is stored back.
- */
+/** Maps the selected control scale onto a main view that fills the resizable host pane. */
 class NeuralNoteEditor : public juce::AudioProcessorEditor
+#if JucePlugin_Enable_ARA
+    , public juce::AudioProcessorEditorARAExtension
+#endif
 {
 public:
     explicit NeuralNoteEditor(NeuralNoteAudioProcessor&);

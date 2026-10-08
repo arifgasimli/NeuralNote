@@ -34,7 +34,7 @@ const MidiBuffer& SynthController::generateNextMidiBuffer(int inNumSamples, bool
 
     // Only while playing: this is called every block now, and with no audio loaded the duration is
     // zero, so an unguarded check would rewind the transport on every callback forever.
-    if (inIsPlaying && mScheduler.getTimeSeconds() >= mProcessor->getSourceAudioManager()->getAudioSampleDuration()) {
+    if (!mProcessor->isARATransportLinked() && inIsPlaying && mScheduler.getTimeSeconds() >= mProcessor->getSourceAudioManager()->getAudioSampleDuration()) {
         if (!inShouldLoop) {
             mProcessor->getPlayer()->setPlayingState(false);
         }

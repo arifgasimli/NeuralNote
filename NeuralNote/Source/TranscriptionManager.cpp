@@ -70,7 +70,7 @@ std::optional<std::vector<NoteEvent>> parseNotes(const String& inJson, double in
 
 TranscriptionManager::TranscriptionManager(NeuralNoteAudioProcessor* inProcessor)
     : mProcessor(inProcessor)
-    , mThreadPool(1)
+    , mThreadPool(1, 0, juce::Thread::Priority::low)
 {
     mJobLambda = [this] { _runModel(); };
 
@@ -434,8 +434,13 @@ void TranscriptionManager::_updateSavedNotes()
 
     SavedNotes saved {JSON::toString(entries, format), *mTranscriptionModelSize};
 
-    const ScopedLock sl(mSavedNotesLock);
-    mSavedNotes = std::move(saved);
+    {
+        const ScopedLock sl(mSavedNotesLock);
+        mSavedNotes = std::move(saved);
+    }
+#if JucePlugin_Enable_ARA
+    mProcessor->saveARATranscription();
+#endif
 }
 
 void TranscriptionManager::_repaintPianoRoll()

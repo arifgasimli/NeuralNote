@@ -295,6 +295,11 @@ THIRD-PARTY SOFTWARE AND ASSETS
 NeuralNote includes the following third-party software and assets, each under its own
 license, reproduced in full below.
 
+ARA SDK (ARA API and ARA Library)
+https://github.com/Celemony/ARA_SDK
+Copyright (c) 2012-2025, Celemony Software GmbH.
+License: Apache-2.0 (full license text above).
+
 The MuScriptor model weights are not part of NeuralNote. They are downloaded separately and
 are licensed CC BY-NC 4.0 by Kyutai and Mirelo: https://creativecommons.org/licenses/by-nc/4.0/
 

@@ -21,10 +21,12 @@ NeuralNoteAudioProcessor::NeuralNoteAudioProcessor()
 
     // After mPlayer: it pushes every fader it holds into that player's synth.
     mInstrumentMixer = std::make_unique<InstrumentMixer>(this);
+    startTimer(100);
 }
 
 NeuralNoteAudioProcessor::~NeuralNoteAudioProcessor()
 {
+    stopTimer();
     Logger::setCurrentLogger(nullptr);
 }
 
@@ -32,10 +34,30 @@ void NeuralNoteAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBl
 {
     mSourceAudioManager->prepareToPlay(sampleRate, samplesPerBlock);
     mPlayer->prepareToPlay(sampleRate, samplesPerBlock);
+#if JucePlugin_Enable_ARA
+    prepareToPlayForARA(sampleRate, samplesPerBlock, getTotalNumOutputChannels(), getProcessingPrecision());
+#endif
+}
+
+void NeuralNoteAudioProcessor::releaseResources()
+{
+#if JucePlugin_Enable_ARA
+    releaseResourcesForARA();
+#endif
 }
 
 void NeuralNoteAudioProcessor::processBlock(AudioBuffer<float>& buffer, MidiBuffer& midiMessages)
 {
+    // Host playhead access belongs to the audio callback; ValueTree/UI writes belong to the timer.
+    double bpm = 0;
+    if (const auto* playhead = getPlayHead()) {
+        if (const auto position = playhead->getPosition(); position.hasValue())
+            bpm = position->getBpm().orFallback(0.0);
+    }
+    mHostTempo = std::isfinite(bpm) && bpm > 0 ? bpm : 0;
+#if JucePlugin_Enable_ARA
+    processBlockForARA(buffer, isRealtime(), getPlayHead());
+#endif
     mSourceAudioManager->processBlock(buffer);
 
     auto is_mute = mParams[ParameterHelpers::MuteId]->getValue() > 0.5f;
@@ -114,6 +136,11 @@ void NeuralNoteAudioProcessor::setStateInformation(const void* data, int sizeInB
 
 void NeuralNoteAudioProcessor::clear()
 {
+#if JucePlugin_Enable_ARA
+    mARAClipActive = false;
+    mARAClipId.clear();
+    mARAClipState.reset();
+#endif
     mPlayer->reset();
     mSourceAudioManager->clear();
     mTranscriptionManager->clear();
@@ -135,6 +162,9 @@ void NeuralNoteAudioProcessor::clearTranscription()
     // Falls back to Empty rather than asserting: a run that failed before any audio was acquired
     // has nothing to go back to.
     mState.store(mSourceAudioManager->getNumSamplesDownAcquired() > 0 ? AudioLoaded : EmptyAudioAndMidiRegions);
+#if JucePlugin_Enable_ARA
+    saveARATranscription();
+#endif
 
     // Re-sizes the audio region from the current sample count, which is unchanged here -- so this
     // is the same call as clear()'s and it leaves the waveform where it is.
@@ -239,4 +269,112 @@ void NeuralNoteAudioProcessor::_updateValueTree(const ValueTree& inNewState)
 AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new NeuralNoteAudioProcessor();
+}
+
+#if JucePlugin_Enable_ARA
+juce::Result NeuralNoteAudioProcessor::importARAClip(const juce::String& id)
+{
+    if (getState() == Recording || getState() == Processing)
+        return juce::Result::fail("Stop recording or wait for transcription to finish before importing a host clip.");
+
+    nn::ara::ImportedClip clip;
+    if (const auto result = nn::ara::readClip(*this, id, clip, getActiveEditor() != nullptr); result.failed())
+        return result;
+
+    // The source/player buffers must not be replaced while an audio callback is reading them.
+    const bool wasSuspended = isSuspended();
+    suspendProcessing(true);
+    const juce::ScopeGuard resume([this, wasSuspended] { suspendProcessing(wasSuspended); });
+    const juce::ScopedLock audioCallbackLock(getCallbackLock());
+    if (const auto result = mSourceAudioManager->onHostAudio(clip.audio, clip.sampleRate, clip.name); result.failed())
+        return result;
+
+    mARAClipState = std::move(clip.state);
+    mARAClipId = id;
+    mARAClipStart = clip.playbackStart;
+    mARAClipActive = true;
+    mARAAutoImportDone = true;
+    juce::ValueTree saved;
+    {
+        const juce::ScopedLock lock(mARAClipState->lock);
+        saved = mARAClipState->transcription.createCopy();
+    }
+    mTranscriptionManager->restoreFromStateTree(saved);
+    return juce::Result::ok();
+}
+
+void NeuralNoteAudioProcessor::saveARATranscription()
+{
+    if (mARAClipState) {
+        const auto tree = mTranscriptionManager->createStateTree();
+        mARAClipState->setTranscription(tree);
+    }
+}
+#endif
+
+void NeuralNoteAudioProcessor::syncHostTempo()
+{
+    const double bpm = mHostTempo.load();
+    const bool linked = bpm > 0;
+    if (linked && std::abs(static_cast<double>(mValueTree.getProperty(NnId::ExportTempoId, 120.0)) - bpm) > 0.000001)
+        mValueTree.setProperty(NnId::ExportTempoId, bpm, nullptr);
+
+}
+
+void NeuralNoteAudioProcessor::timerCallback()
+{
+    syncHostTempo();
+#if JucePlugin_Enable_ARA
+    syncARAHostState();
+#endif
+}
+
+#if JucePlugin_Enable_ARA
+void NeuralNoteAudioProcessor::syncARAHostState()
+{
+    if (!isBoundToARA())
+        return;
+    if (!mARAAutoImportDone && getState() != Recording && getState() != Processing
+        && Time::getMillisecondCounterHiRes() >= mARANextImportAttempt) {
+        const auto clips = nn::ara::getClips(*this, getActiveEditor() != nullptr);
+        if (!clips.empty()) {
+            mARANextImportAttempt = Time::getMillisecondCounterHiRes() + 1500;
+            importARAClip(clips.front().id);
+        }
+    }
+    if (!mARAClipId.isEmpty()) {
+        double start = 0;
+        mARAClipActive = nn::ara::getClipStart(*this, mARAClipId, start, getActiveEditor() != nullptr);
+        mARAClipStart = start;
+    }
+}
+#endif
+
+bool NeuralNoteAudioProcessor::requestHostPlayback(bool playing)
+{
+#if JucePlugin_Enable_ARA
+    if (isARATransportLinked()) {
+        if (auto* controller = nn::ara::getPlaybackController(*this)) {
+            if (playing) controller->requestStartPlayback();
+            else controller->requestStopPlayback();
+        }
+        return true;
+    }
+#endif
+    juce::ignoreUnused(playing);
+    return false;
+}
+
+bool NeuralNoteAudioProcessor::requestHostPosition(double localSeconds)
+{
+#if JucePlugin_Enable_ARA
+    if (isARATransportLinked()) {
+        if (auto* controller = nn::ara::getPlaybackController(*this))
+            controller->requestSetPlaybackPosition(getARAClipStart() + juce::jlimit(0.0,
+                mSourceAudioManager->getAudioSampleDuration(), localSeconds));
+        return true;
+    }
+#endif
+    juce::ignoreUnused(localSeconds);
+    return false;
 }

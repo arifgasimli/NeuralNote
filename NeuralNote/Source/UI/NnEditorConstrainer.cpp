@@ -10,10 +10,10 @@ void NnEditorConstrainer::configure(juce::Component* inEditor)
 {
     mEditor = inEditor;
 
-    setFixedAspectRatio((double) nn::metrics::editorWidth / (double) nn::metrics::editorHeight);
+    setFixedAspectRatio(0.0);
 
     setMinimumWidth(juce::roundToIntAccurate((double) nn::metrics::editorWidth * nn::metrics::minEditorScale));
-    setMinimumHeight(juce::roundToIntAccurate((double) nn::metrics::editorHeight * nn::metrics::minEditorScale));
+    setMinimumHeight(240);
 
     _applyMaximumSizeForCurrentDisplay();
 }
@@ -79,10 +79,7 @@ void NnEditorConstrainer::resizeEnd()
 
 void NnEditorConstrainer::_applyMaximumSizeForCurrentDisplay()
 {
-    // Fed as an aspect-consistent pair rather than two independently derived limits, so the base
-    // class's single-pass aspect correction cannot overshoot either one.
-    const double max_scale = juce::jmax(maxScaleForCurrentDisplay(), nn::metrics::minEditorScale);
-
-    setMaximumWidth(juce::roundToIntAccurate((double) nn::metrics::editorWidth * max_scale));
-    setMaximumHeight(juce::roundToIntAccurate((double) nn::metrics::editorHeight * max_scale));
+    // Embedded ARA editors must accept the full host pane, including ultrawide layouts.
+    setMaximumWidth(32768);
+    setMaximumHeight(32768);
 }

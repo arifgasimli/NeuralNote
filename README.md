@@ -9,6 +9,25 @@ Audio Workstation.
 > Testing so far covers only a few machines and GPUs. Whether something breaks or works great on your hardware,
 > please tell us in [GitHub issues](https://github.com/DamRsn/NeuralNote/issues) (see [Hardware](#models-and-performance)).
 
+## Changes in this fork
+
+This fork of [DamRsn/NeuralNote](https://github.com/DamRsn/NeuralNote) adds ARA integration and
+improvements developed for use in Studio One:
+
+- Automatic import of the first assigned ARA clip, respecting its source trim and duration.
+- ARA transcription persistence, archive restore and modification cloning.
+- An editor that fills the host pane with independently adjustable width and height.
+- Host Play/Stop/seek synchronization and a clip-relative plugin playhead.
+- Project BPM synchronization for the tempo field and MIDI export.
+- CPU inference using half the available logical processors, a low-priority job worker,
+  one transcription per host process, and diagnostic logging.
+- Windows GPU builds with Vulkan support, verified on an NVIDIA GeForce RTX 4090.
+
+See [ARA.md](ARA.md) for scope and validation, and [PACKAGING.md](PACKAGING.md) for GPU build and
+installer instructions. Automated ARA integration tests and real Small/Large model inference on a
+test ARA clip passed locally. This development fork is not an official upstream release.
+The upstream download links below refer to upstream builds and do not include these fork changes.
+
 ## What's new in v2
 
 - **A new, much more capable transcription model.** v2 replaces Spotify's Basic Pitch with
@@ -58,6 +77,17 @@ NeuralNote is a simple AudioFX plugin (VST®3/AU/Standalone app) that you apply 
   - Adjust the level of each instrument.
 - When you're happy with the result, drag and drop the MIDI from the plugin onto a MIDI track, or save the MIDI file
   to your computer.
+
+### ARA hosts
+
+ARA 2 is enabled by default in source builds for VST3 and AU. Add NeuralNote using your DAW's
+ARA/region-extension workflow. The first assigned clip imports automatically; choose instruments
+and click **Transcribe**. Use **Settings > Import host clip (ARA)** to switch excerpts. Play, Stop
+and seek follow the DAW transport, and the editor fills the resizable host pane.
+Finished transcriptions are stored with the ARA audio modification and recalled when that excerpt
+is imported again. MIDI export remains drag-and-drop or file export; place it at the original clip's start.
+
+See [ARA.md](ARA.md) for build options, supported behavior, and the DAW verification checklist.
 
 ## Models and performance
 

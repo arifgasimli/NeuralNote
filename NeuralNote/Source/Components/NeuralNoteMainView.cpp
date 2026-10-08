@@ -137,7 +137,7 @@ void NeuralNoteMainView::timerCallback()
 
     const State processor_state = mProcessor.getState();
 
-    if (mPrevState != processor_state) {
+    if (mPrevState != processor_state || mPrevHostTempoLinked != mProcessor.isHostTempoLinked()) {
         mPrevState = processor_state;
         updateEnablements();
     }
@@ -199,6 +199,7 @@ bool NeuralNoteMainView::keyPressed(const KeyPress& key)
 void NeuralNoteMainView::updateEnablements()
 {
     mPrevState = mProcessor.getState();
+    mPrevHostTempoLinked = mProcessor.isHostTempoLinked();
 
     mTopBar.updateEnablements();
     mTopBar.syncTransportToggles();
@@ -233,6 +234,31 @@ void NeuralNoteMainView::_buildSettingsMenu()
     mSettingsMenuItemsShouldBeEnabled.clear();
 
     int item_id = 0;
+
+#if JucePlugin_Enable_ARA
+    if (mProcessor.isBoundToARA()) {
+        PopupMenu clipsMenu;
+        for (const auto& clip : nn::ara::getClips(mProcessor)) {
+            auto item = PopupMenu::Item(clip.name);
+            item.setID(++item_id);
+            item.setEnabled(mProcessor.getState() != Processing && mProcessor.getState() != Recording);
+            item.setAction([safe = Component::SafePointer<NeuralNoteMainView>(this), id = clip.id] {
+                if (safe != nullptr) {
+                    const auto result = safe->mProcessor.importARAClip(id);
+                    if (result.failed())
+                        NativeMessageBox::showMessageBoxAsync(MessageBoxIconType::WarningIcon,
+                            "Could not import host clip", result.getErrorMessage());
+                    safe->updateEnablements();
+                }
+            });
+            clipsMenu.addItem(item);
+        }
+        if (clipsMenu.getNumItems() == 0)
+            clipsMenu.addItem(++item_id, "Select a clip in your DAW first", false);
+        mSettingsMenu->addSubMenu("Import host clip (ARA)", clipsMenu);
+        mSettingsMenu->addSeparator();
+    }
+#endif
 
     // Applies from the next transcription: the model is loaded per run.
     PopupMenu device_menu;

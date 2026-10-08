@@ -82,6 +82,7 @@ private:
     std::atomic<float> mMasterMeanSquare {0.0f};
     std::atomic<std::uint32_t> mMeterFrame {0};
 
+    std::atomic<double> mHostPlayheadTime {0};
     double mPlayheadTime = 0;
     double mSampleRate = 44100;
 

@@ -128,8 +128,11 @@ void NnToolbar::updateEnablements()
     // Export and drag stay off mid-transcription: a half-finished file gives no sign that it is one.
     mExportButton.setEnabled(is_finished);
     mDragButton.setEnabled(is_finished);
-    mTempoEditor->setEnabled(is_finished);
-    mTempoEditor->setAlpha(is_finished ? 1.0f : nn::DISABLED_ALPHA);
+    mTempoEditor->setReadOnly(mProcessor.isHostTempoLinked());
+    mTempoEditor->setTooltip(mProcessor.isHostTempoLinked()
+        ? "Tempo follows the host project" : NeuralNoteTooltips::export_tempo);
+    mTempoEditor->setEnabled(is_finished || mProcessor.isHostTempoLinked());
+    mTempoEditor->setAlpha(is_finished || mProcessor.isHostTempoLinked() ? 1.0f : nn::DISABLED_ALPHA);
 
     // Not while recording: clearing would stop the recording behind the record button's back.
     const State state = mProcessor.getState();
@@ -156,6 +159,7 @@ void NnToolbar::_exportMidiFile()
                 return;
             }
 
+            mProcessor.syncHostTempo();
             const double export_bpm = mProcessor.getValueTree().getProperty(NnId::ExportTempoId, 120.0);
             const auto overflow_mode =
                 static_cast<MidiOverflowMode>(static_cast<int>(mProcessor.getValueTree().getProperty(

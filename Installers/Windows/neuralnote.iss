@@ -2,15 +2,35 @@
 #define ReleaseDir "cmake-build-release/NeuralNote_artefacts/Release"
 #endif
 
+#ifndef InstallerName
+#define InstallerName "NeuralNoteInstaller"
+#endif
+#ifndef InstallerInfoFile
+#define InstallerInfoFile "..\readme.txt"
+#endif
+#ifdef ValidationRoot
+#define Vst3Destination ValidationRoot + "\VST3\NeuralNote.vst3"
+#else
+#define Vst3Destination "{commoncf}\VST3\NeuralNote.vst3"
+#endif
+
 [Setup]
 ; Identifies the installation across versions; must never change.
+#ifdef ValidationRoot
+AppId=NeuralNoteARAPackagingValidation
+DefaultDirName={#ValidationRoot}\Standalone
+PrivilegesRequired=lowest
+Uninstallable=no
+CreateUninstallRegKey=no
+#else
 AppId={{C01E3C5A-F330-421C-94D7-6264FC93B676}
+DefaultDirName={commonpf}\NeuralNote
+#endif
 AppName=NeuralNote
 AppVersion=2.0.0
-OutputBaseFilename=NeuralNoteInstaller
-DefaultDirName={commonpf}\NeuralNote
+OutputBaseFilename={#InstallerName}
 DisableProgramGroupPage=yes
-InfoBeforeFile=..\readme.txt
+InfoBeforeFile={#InstallerInfoFile}
 LicenseFile=..\license.txt
 AppPublisher=Dr. Audio
 AppPublisherURL=https://github.com/DamRsn/NeuralNote
@@ -36,17 +56,22 @@ Name: "plugin"; Description: "NeuralNote VST3"; Types: custom; Flags: disablenou
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Components: mainapp; Flags: unchecked
 
+#ifndef ValidationRoot
 [InstallDelete]
 ; v1 installed the 32-bit way, into Program Files (x86), without an uninstaller.
 Type: filesandordirs; Name: "{commonpf32}\NeuralNote"
+#endif
 
 [Files]
 Source: "..\..\{#ReleaseDir}\Standalone\NeuralNote.exe"; DestDir: "{app}"; Components:mainapp; Flags: ignoreversion recursesubdirs;
-Source: "..\..\{#ReleaseDir}\VST3\NeuralNote.vst3\*"; DestDir: "{commoncf}\VST3\NeuralNote.vst3"; Components:plugin; Flags: ignoreversion recursesubdirs;
+Source: "..\..\{#ReleaseDir}\VST3\NeuralNote.vst3\*"; DestDir: "{#Vst3Destination}"; Components:plugin; Flags: ignoreversion recursesubdirs;
+Source: "..\..\ARA.md"; DestDir: "{app}"; DestName: "ARA-Usage.md"; Components: mainapp; Flags: ignoreversion;
 
+#ifndef ValidationRoot
 [Icons]
 Name: "{autoprograms}\NeuralNote"; Filename: "{app}\NeuralNote.exe"; Components: mainapp
 Name: "{autodesktop}\NeuralNote"; Filename: "{app}\NeuralNote.exe"; Tasks: desktopicon
+#endif
 
 [Code]
 // Models, recordings and settings live in the user's profile, not in {app}. Only the profile

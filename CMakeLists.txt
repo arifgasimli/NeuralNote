@@ -30,11 +30,20 @@ option(NEURALNOTE_MUSCRIPTOR_DEBUG "Build muscriptor.cpp in Debug even when the 
 option(LTO "Enable Link Time Optimization" ON)
 option(NEURALNOTE_FETCH_SOUNDFONT "Download the soundfont at configure time if it is missing" ON)
 option(NEURALNOTE_ASIO "Enable ASIO devices on Windows (distributing it needs a Steinberg ASIO license agreement)" ON)
+option(NEURALNOTE_ARA "Enable ARA 2 host integration in VST3 and AU" ON)
 
 #static linking in Windows
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 add_subdirectory(ThirdParty/JUCE)
+if (NEURALNOTE_ARA)
+  set(NEURALNOTE_ARA_SDK "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/ARA_SDK" CACHE PATH "ARA SDK root")
+  if (NOT EXISTS "${NEURALNOTE_ARA_SDK}/ARA_API/ARAInterface.h" OR
+      NOT EXISTS "${NEURALNOTE_ARA_SDK}/ARA_Library/PlugIn/ARAPlug.h")
+    message(FATAL_ERROR "ARA SDK missing. Run git submodule update --init --recursive, or set NEURALNOTE_ARA=OFF.")
+  endif ()
+  juce_set_ara_sdk_path("${NEURALNOTE_ARA_SDK}")
+endif ()
 add_subdirectory(ThirdParty/TinySoundFont)
 add_subdirectory(ThirdParty/minimp3)
 
@@ -103,6 +112,11 @@ juce_add_plugin("${BaseTargetName}"
         NEEDS_MIDI_INPUT FALSE
         NEEDS_MIDI_OUTPUT TRUE
         IS_MIDI_EFFECT FALSE
+        IS_ARA_EFFECT ${NEURALNOTE_ARA}
+        ARA_FACTORY_ID "\"com.draudio.neuralnote.ara.2.0.0\""
+        ARA_DOCUMENT_ARCHIVE_ID "\"com.draudio.neuralnote.ara.archive.1\""
+        ARA_ANALYSIS_TYPES 0
+        ARA_TRANSFORMATION_FLAGS 0
         EDITOR_WANTS_KEYBOARD_FOCUS FALSE
         COPY_PLUGIN_AFTER_BUILD ${COPY_PLUGIN_AFTER_BUILD}
         MICROPHONE_PERMISSION_ENABLED TRUE
@@ -197,6 +211,7 @@ if (${LTO})
 endif ()
 
 if (BUILD_UNIT_TESTS)
+  enable_testing()
   add_subdirectory(Tests)
 endif ()
 

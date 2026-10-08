@@ -59,6 +59,9 @@ public:
      */
     bool onFileDrop(const File& inFile);
 
+    /** Load an owned host-audio snapshot; cache it so normal plugin-state restoration still works. */
+    juce::Result onHostAudio(const AudioBuffer<float>& audio, double sampleRate, const String& name);
+
     /**
      * Stop recording if needed and then reset/clear everything owned by this class.
      */

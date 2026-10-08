@@ -60,6 +60,7 @@ private:
     NeuralNoteAudioProcessor& mProcessor;
 
     State mPrevState = EmptyAudioAndMidiRegions;
+    bool mPrevHostTempoLinked = false;
 
     TopBar mTopBar;
     Sidebar mSidebar;

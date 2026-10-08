@@ -7,17 +7,7 @@
 
 #include <JuceHeader.h>
 
-/**
- * Bounds constrainer for the editor, capping it to what fits on the display it is currently on.
- *
- * Installing it with setConstrainer() is what makes the cap native: the host and the OS consult
- * checkBounds() during their own resize negotiation, so the container window itself cannot be
- * dragged past the screen. A reactive setSize() cannot do that -- it only shrinks the editor and
- * leaves the host window oversized.
- *
- * The maximum is recomputed on every check from the display the editor sits on, so it follows the
- * window across monitors. userBounds is the usable area, menu bar and dock/taskbar excluded.
- */
+/** Independent editor size limits. Initial UI zoom is clamped to the current display. */
 class NnEditorConstrainer : public juce::ComponentBoundsConstrainer
 {
 public:

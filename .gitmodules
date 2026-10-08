@@ -5,3 +5,6 @@
 	path = ThirdParty/muscriptor.cpp
 	url = https://github.com/DamRsn/muscriptor.cpp.git
 	branch = main
+[submodule "ThirdParty/ARA_SDK"]
+	path = ThirdParty/ARA_SDK
+	url = https://github.com/Celemony/ARA_SDK.git

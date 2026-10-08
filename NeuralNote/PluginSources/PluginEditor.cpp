@@ -6,10 +6,16 @@
 
 NeuralNoteEditor::NeuralNoteEditor(NeuralNoteAudioProcessor& p)
     : AudioProcessorEditor(&p)
+#if JucePlugin_Enable_ARA
+    , AudioProcessorEditorARAExtension(&p)
+#endif
 {
     mMainView = std::make_unique<NeuralNoteMainView>(p);
 
     addAndMakeVisible(*mMainView);
+#if JucePlugin_Enable_ARA
+    p.syncARAHostState();
+#endif
 
     mConstrainer.configure(this);
     mConstrainer.onResizeEnd = [this] { _persistScale(); };
@@ -47,20 +53,12 @@ void NeuralNoteEditor::resized()
         return;
     }
 
-    // From whichever dimension is tighter: the constrainer's aspect correction rounds to whole
-    // pixels, so the two need not agree, and the looser one would scale the view past the window.
-    const double scale = juce::jmin((double) getWidth() / (double) nn::metrics::editorWidth,
-                                    (double) getHeight() / (double) nn::metrics::editorHeight);
-
-    mMainView->setTransform(juce::AffineTransform::scale((float) scale));
-    mMainView->setBounds(0, 0, nn::metrics::editorWidth, nn::metrics::editorHeight);
-
-    mScale = scale;
-
-    // Programmatic resizes -- opening and the scale menu -- bypass the constrainer, so it runs
-    // here. It is idempotent, so the one re-entry it can cause stops there, and mScale ends up
-    // holding the size that was actually applied.
-    mConstrainer.checkComponentBounds(this);
+    // Keep controls at the selected UI scale while the timeline fills both host dimensions.
+    // Narrow windows may scale down to keep the full toolbar accessible.
+    const double scale = juce::jmin(mScale, static_cast<double>(getWidth()) / nn::metrics::editorWidth);
+    mMainView->setTransform(juce::AffineTransform::scale(static_cast<float>(scale)));
+    mMainView->setBounds(0, 0, juce::roundToInt(std::ceil(getWidth() / scale)),
+                        juce::roundToInt(std::ceil(getHeight() / scale)));
 }
 
 void NeuralNoteEditor::parentHierarchyChanged()
@@ -72,7 +70,7 @@ void NeuralNoteEditor::parentHierarchyChanged()
         return;
     }
 
-    mConstrainer.checkComponentBounds(this);
+    resized();
 }
 
 void NeuralNoteEditor::applyScale(double inScale)
@@ -86,6 +84,7 @@ void NeuralNoteEditor::applyScale(double inScale)
 void NeuralNoteEditor::_setScale(double inScale)
 {
     const double scale = mConstrainer.clampScale(inScale);
+    mScale = scale;
 
     setSize(juce::roundToIntAccurate((double) nn::metrics::editorWidth * scale),
             juce::roundToIntAccurate((double) nn::metrics::editorHeight * scale));

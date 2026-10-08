@@ -14,6 +14,7 @@
 #include "TranscriptionManager.h"
 #include "NnId.h"
 #include "NnLook.h"
+#include "NeuralNoteARA.h"
 
 class NeuralNoteMainView;
 class NeuralNoteEditor;
@@ -27,6 +28,11 @@ class NeuralNoteEditor;
 enum State { EmptyAudioAndMidiRegions = 0, Recording, AudioLoaded, Processing, PopulatedAudioAndMidiRegions };
 
 class NeuralNoteAudioProcessor : public PluginHelpers::ProcessorBase
+#if JucePlugin_Enable_ARA
+    , public juce::AudioProcessorARAExtension
+
+#endif
+    , private juce::Timer
 {
 public:
     NeuralNoteAudioProcessor();
@@ -36,6 +42,39 @@ public:
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
 
     void processBlock(AudioBuffer<float>&, MidiBuffer&) override;
+
+    void releaseResources() override;
+
+#if JucePlugin_Enable_ARA
+    juce::AudioProcessorARAExtension* getARAClientExtensions() override { return this; }
+    juce::Result importARAClip(const juce::String& id);
+    void saveARATranscription();
+    /** Import/update host assignments on the document thread; also polled before the editor opens. */
+    void syncARAHostState();
+#endif
+
+    bool isARATransportLinked() const
+    {
+#if JucePlugin_Enable_ARA
+        return mARAClipActive.load();
+#else
+        return false;
+#endif
+    }
+    double getARAClipStart() const
+    {
+#if JucePlugin_Enable_ARA
+        return mARAClipStart.load();
+#else
+        return 0;
+#endif
+    }
+    /** Message-thread handoff of the host BPM captured in processBlock. */
+    void syncHostTempo();
+    bool isHostTempoLinked() const { return mHostTempo.load() > 0; }
+
+    bool requestHostPlayback(bool playing);
+    bool requestHostPosition(double localSeconds);
 
     AudioProcessorEditor* createEditor() override;
 
@@ -134,4 +173,14 @@ private:
     std::unique_ptr<TranscriptionManager> mTranscriptionManager;
     std::unique_ptr<InstrumentMixer> mInstrumentMixer;
     std::unique_ptr<FileLogger> mLogger;
+    void timerCallback() override;
+    std::atomic<double> mHostTempo {0};
+#if JucePlugin_Enable_ARA
+    std::shared_ptr<nn::ara::ClipState> mARAClipState;
+    juce::String mARAClipId;
+    std::atomic<bool> mARAClipActive {false};
+    std::atomic<double> mARAClipStart {0};
+    bool mARAAutoImportDone = false;
+    double mARANextImportAttempt = 0;
+#endif
 };

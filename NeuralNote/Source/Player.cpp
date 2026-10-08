@@ -41,6 +41,30 @@ void Player::prepareToPlay(double inSampleRate, int inSamplesPerBlock)
 
 void Player::processBlock(AudioBuffer<float>& inAudioBuffer, MidiBuffer& outMidiBuffer)
 {
+    const bool followHost = mProcessor->isARATransportLinked();
+    bool insideHostClip = false;
+    if (followHost) {
+        const auto* playhead = mProcessor->getPlayHead();
+        const auto position = playhead != nullptr ? playhead->getPosition() : juce::Optional<juce::AudioPlayHead::PositionInfo>();
+        const double duration = mProcessor->getSourceAudioManager()->getAudioSampleDuration();
+        const double hostSeconds = position.hasValue() ? position->getTimeInSeconds().orFallback(
+            static_cast<double>(position->getTimeInSamples().orFallback(0)) / mSampleRate) : mProcessor->getARAClipStart();
+        const double relative = hostSeconds - mProcessor->getARAClipStart();
+        const double local = juce::jlimit(0.0, duration, relative);
+        const bool hostPlaying = position.hasValue() && position->getIsPlaying();
+        insideHostClip = hostPlaying && relative >= 0 && relative < duration;
+        if (std::abs(mSynthController->getCurrentTimeSeconds() - local) > 0.5 / mSampleRate) {
+            mSynthController->setNewTimeSeconds(local);
+            mShouldSilenceSynth = true;
+        }
+        if (mIsPlaying.exchange(hostPlaying) && !hostPlaying) {
+            mSynthController->stopAllNotes();
+            mShouldSilenceSynth = true;
+        }
+        mPlayheadTime = local;
+        mHostPlayheadTime = local;
+    }
+
     auto old_audio_gain = mGainSourceAudio;
     auto old_master_gain = mMasterGain;
 
@@ -49,7 +73,7 @@ void Player::processBlock(AudioBuffer<float>& inAudioBuffer, MidiBuffer& outMidi
     _setGains(mProcessor->getParameterValue(ParameterHelpers::MixId),
               mProcessor->getParameterValue(ParameterHelpers::MasterGainId));
 
-    bool is_playing = mIsPlaying.load();
+    bool is_playing = followHost ? insideHostClip : mIsPlaying.load();
     mInternalBuffer.clear();
 
     // Clamped to what mInternalBuffer was actually sized for at prepareToPlay: a host that reports a
@@ -70,7 +94,7 @@ void Player::processBlock(AudioBuffer<float>& inAudioBuffer, MidiBuffer& outMidi
     // Every block, playing or not: a stopped transport, a seek and a swapped note list all leave
     // note-offs to deliver, and this is the only thing that delivers them.
     auto& midi_buffer =
-        mSynthController->generateNextMidiBuffer(inAudioBuffer.getNumSamples(), is_playing, mShouldLoop.load());
+        mSynthController->generateNextMidiBuffer(inAudioBuffer.getNumSamples(), is_playing, !followHost && mShouldLoop.load());
 
     if (mShouldOutputMidi) {
         outMidiBuffer.addEvents(midi_buffer, 0, inAudioBuffer.getNumSamples(), 0);
@@ -93,7 +117,7 @@ void Player::processBlock(AudioBuffer<float>& inAudioBuffer, MidiBuffer& outMidi
     mSynth->processBlock(
         mInternalBuffer, mSynthController->getSynthEvents(), inAudioBuffer.getNumSamples(), mGainSynth);
 
-    if (is_playing && mProcessor->canPlay()) {
+    if (!followHost && is_playing && mProcessor->canPlay()) {
         const auto& source_buffer = mProcessor->getSourceAudioManager()->getSourceAudioForPlayback();
         int num_samples = std::min(inAudioBuffer.getNumSamples(), source_buffer.getNumSamples() - playhead_index);
 
@@ -138,6 +162,10 @@ void Player::processBlock(AudioBuffer<float>& inAudioBuffer, MidiBuffer& outMidi
         mMeterFrame.fetch_add(1, std::memory_order_relaxed);
     }
 
+    if (followHost)
+        inAudioBuffer.applyGainRamp(0, inAudioBuffer.getNumSamples(),
+            old_audio_gain * old_master_gain, mGainSourceAudio * mMasterGain);
+
     for (int ch = 0; ch < num_out_channels; ch++) {
         inAudioBuffer.addFrom(ch, 0, mInternalBuffer, ch, 0, inAudioBuffer.getNumSamples());
     }
@@ -150,6 +178,8 @@ bool Player::isPlaying() const
 
 void Player::setPlayingState(bool inIsPlaying)
 {
+    if (mProcessor->requestHostPlayback(inIsPlaying))
+        return;
     mIsPlaying.store(inIsPlaying);
 
     if (!inIsPlaying) {
@@ -168,7 +198,8 @@ void Player::returnToStart()
 void Player::reset()
 {
     mSynthController->reset();
-    setPlayingState(false);
+    mIsPlaying = false;
+    mShouldSilenceSynth = true;
     mPlayheadTime = 0;
 
     // The published value only, not the window behind it: this runs without the callback lock, so
@@ -183,11 +214,13 @@ InstrumentSynth* Player::getInstrumentSynth() const
 
 double Player::getPlayheadPositionSeconds() const
 {
-    return mSynthController->getCurrentTimeSeconds();
+    return mProcessor->isARATransportLinked() ? mHostPlayheadTime.load() : mSynthController->getCurrentTimeSeconds();
 }
 
 void Player::setPlayheadPositionSeconds(double inNewPosition)
 {
+    if (mProcessor->requestHostPosition(inNewPosition))
+        return;
     if (inNewPosition >= 0 && inNewPosition < mProcessor->getSourceAudioManager()->getAudioSampleDuration()) {
         mSynthController->setNewTimeSeconds(inNewPosition);
         mPlayheadTime = inNewPosition;

@@ -37,5 +37,15 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         juce_recommended_lto_flags
         juce_recommended_warning_flags)
 
+add_test(NAME NeuralNoteUnitTests COMMAND UnitTests)
 
+if (NEURALNOTE_ARA)
+    add_executable(ARAIntegrationTests ARAIntegrationTests.cpp
+        "${NEURALNOTE_ARA_SDK}/ARA_Library/Dispatch/ARAHostDispatch.cpp"
+        ../ThirdParty/JUCE/modules/juce_audio_plugin_client/juce_audio_plugin_client_ARA.cpp)
+    target_include_directories(ARAIntegrationTests PRIVATE $<TARGET_PROPERTY:NeuralNote,INCLUDE_DIRECTORIES>)
+    target_compile_definitions(ARAIntegrationTests PRIVATE $<TARGET_PROPERTY:NeuralNote,COMPILE_DEFINITIONS>)
+    target_link_libraries(ARAIntegrationTests PRIVATE NeuralNote)
+    add_test(NAME NeuralNoteARAIntegrationTests COMMAND ARAIntegrationTests)
+endif ()
 
