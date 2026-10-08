@@ -1,0 +1,55 @@
+name: macOS ARA release
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/ara-support]
+    paths: [.github/workflows/macos-release.yml, Tools/package_macos_ara.sh]
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            label: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+            label: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned dependencies
+        run: |
+          git submodule update --init --depth 1 ThirdParty/JUCE ThirdParty/muscriptor.cpp ThirdParty/ARA_SDK
+          git -C ThirdParty/ARA_SDK submodule update --init --depth 1 ARA_API ARA_Library
+      - name: Check Metal compiler
+        run: |
+          if ! xcrun metal --version; then
+            xcodebuild -downloadComponent MetalToolchain
+          fi
+          xcrun metal --version
+      - name: Configure
+        run: >-
+          cmake -S . -B build-mac -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }}
+          -DNEURALNOTE_ARA=ON -DMUSCRIPTOR_METAL=ON
+          -DMUSCRIPTOR_METAL_PRECOMPILED=ON -DMUSCRIPTOR_VULKAN=OFF
+          -DLTO=OFF -DBUILD_UNIT_TESTS=ON
+      - name: Build and test
+        run: |
+          cmake --build build-mac --target NeuralNote_Standalone NeuralNote_VST3 NeuralNote_AU UnitTests ARAIntegrationTests --parallel 2
+          ctest --test-dir build-mac --output-on-failure
+      - name: Package
+        run: bash Tools/package_macos_ara.sh build-mac/NeuralNote_artefacts/Release ${{ matrix.arch }} ${{ matrix.label }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NeuralNote-ARA-macOS-${{ matrix.label }}
+          path: build-mac/packages/*
+      - name: Publish assets to ARA release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload v2.0.0-ara.5 build-mac/packages/* --repo "$GITHUB_REPOSITORY" --clobber
