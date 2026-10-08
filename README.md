@@ -14,6 +14,9 @@ Audio Workstation.
 This fork of [DamRsn/NeuralNote](https://github.com/DamRsn/NeuralNote) adds ARA integration and
 improvements developed for use in Studio One:
 
+**Windows ARA build:** download the installer or portable ZIP from
+[this fork's releases](https://github.com/arifgasimli/NeuralNote/releases).
+
 - Automatic import of the first assigned ARA clip, respecting its source trim and duration.
 - ARA transcription persistence, archive restore and modification cloning.
 - An editor that fills the host pane with independently adjustable width and height.
