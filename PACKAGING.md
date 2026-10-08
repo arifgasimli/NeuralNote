@@ -73,3 +73,21 @@ the installer embeds the compute shaders and does not require the SDK on the tar
 
 The GPU verification build used official Vulkan SDK 1.4.363.0. Set `VULKAN_SDK` to your SDK
 root when rebuilding locally.
+
+## macOS ARA development packages
+
+The `macOS ARA release` GitHub Actions workflow builds separate Apple Silicon and Intel binaries
+on native macOS runners, runs UnitTests and ARAIntegrationTests, and packages Standalone, AU and VST3.
+It is manually dispatched from Actions; editing the packaging scripts does not publish a release.
+The workflow uploads packages to the existing `v2.0.0-ara.5` development release.
+
+Metal shaders are precompiled and included in every bundle. The development packaging helper
+`Tools/package_macos_ara.sh` verifies architecture, ad-hoc signs and verifies the bundles, then
+creates a `.pkg`, a manual-install ZIP and per-architecture SHA-256 sums. It requires macOS tools.
+The installer places the app in `/Applications`, AU in `/Library/Audio/Plug-Ins/Components`, and
+VST3 in `/Library/Audio/Plug-Ins/VST3`. Close the DAW before installation.
+
+These packages have no Apple Developer ID signature or notarization. The original
+`sign_and_package_neuralnote_macos.sh` remains available for properly signed and notarized builds
+when Apple certificates and notarization credentials are supplied. CI verifies compilation and
+simulated-host behavior, not real-DAW compatibility or Metal inference on a physical Mac.

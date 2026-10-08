@@ -16,6 +16,8 @@ ditto "$release/Standalone/NeuralNote.app" "$payload/Applications/NeuralNote.app
 ditto "$release/AU/NeuralNote.component" "$payload/Library/Audio/Plug-Ins/Components/NeuralNote.component"
 ditto "$release/VST3/NeuralNote.vst3" "$payload/Library/Audio/Plug-Ins/VST3/NeuralNote.vst3"
 cp ARA.md "$payload/Library/Application Support/NeuralNote/ARA-Usage.md"
+cp LICENSE "$payload/Library/Application Support/NeuralNote/LICENSE.txt"
+cp Installers/license.txt "$payload/Library/Application Support/NeuralNote/THIRD-PARTY-NOTICES.txt"
 cat > "$payload/Library/Application Support/NeuralNote/README.txt" <<'EOF'
 NeuralNote ARA r5 for macOS. Includes Standalone, AU, VST3 and Metal GPU support.
 This development build is ad-hoc signed, without Apple Developer ID or notarization.

@@ -1,9 +1,6 @@
 name: macOS ARA release
 on:
   workflow_dispatch:
-  push:
-    branches: [feature/ara-support]
-    paths: [.github/workflows/macos-release.yml, Tools/package_macos_ara.sh]
 permissions:
   contents: write
 jobs:
